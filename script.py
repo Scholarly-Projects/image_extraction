@@ -25,24 +25,6 @@ blur_kernel_size = (5, 5)  # Size of Gaussian blur kernel
 def is_valid_photo(w, h, aspect_ratio):
     return w >= min_width and h >= min_height and aspect_ratio_range[0] <= aspect_ratio <= aspect_ratio_range[1]
 
-def is_almost_black_or_white(image, threshold=240):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    mean_intensity = np.mean(gray)
-    return mean_intensity < threshold or mean_intensity > (255 - threshold)
-
-def straighten_image(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    coords = np.column_stack(np.where(gray > 0))
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle = -(90 + angle)
-    else:
-        angle = -angle
-    center = (image.shape[1] // 2, image.shape[0] // 2)
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
-    rotated = cv2.warpAffine(image, M, (image.shape[1], image.shape[0]), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-    return rotated
-
 def extract_photos_from_file(image, filename):
     # Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -87,16 +69,12 @@ def extract_photos_from_file(image, filename):
                         break
                     
                     cropped_image = image[y:y+h, x:x+w]
-                    
-                    # Skip almost black or white photos
-                    if is_almost_black_or_white(cropped_image):
-                        continue
-
-                    # Straighten the image
-                    cropped_image = straighten_image(cropped_image)
-                    
                     output_filename = f'{os.path.splitext(filename)[0]}_{photo_count + 1:02d}.tif'
                     output_path = os.path.join(output_folder, output_filename)
+                    
+                    # Print the output path for debugging
+                    print(f"Saving extracted photo to: {output_path}")
+                    
                     success = cv2.imwrite(output_path, cropped_image)
                     
                     if success:
@@ -108,8 +86,8 @@ def extract_photos_from_file(image, filename):
 
 print("Starting extraction...")
 # Loop over all TIFF files in the input folder
-for filename in sorted(os.listdir(input_folder)):
-    if filename.lower().endswith('.tif'):
+for filename in os.listdir(input_folder):
+    if filename.lower().endswith(('.tif', '.tiff')):
         print(f"Processing {filename}...")
         
         # Construct full file path
