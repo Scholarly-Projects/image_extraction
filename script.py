@@ -2,9 +2,9 @@ import cv2
 import numpy as np
 import os
 
-# Paths to input and output folders
-input_folder = 'A'
-output_folder = 'B'
+# Full paths to input and output folders
+input_folder = 'C:/Users/aweymouth/Downloads/A'
+output_folder = 'C:/Users/aweymouth/Downloads/B'
 
 # Ensure the output folder exists
 os.makedirs(output_folder, exist_ok=True)
