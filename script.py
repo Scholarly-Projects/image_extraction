@@ -16,14 +16,33 @@ min_width = 500           # Minimum width of the extracted photograph
 min_height = 500          # Minimum height of the extracted photograph
 aspect_ratio_range = (0.5, 2)  # Allowed aspect ratio range (width/height)
 max_photos_per_file = 6   # Maximum number of photographs to extract from a single file
+border_margin = 20        # Increased margin around the border to include edge photos
 
-# Parameters for edge detection and preprocessing
-canny_threshold1 = 100   # Lower threshold for Canny edge detection
-canny_threshold2 = 200   # Upper threshold for Canny edge detection
-blur_kernel_size = (5, 5)  # Size of Gaussian blur kernel
+# Adjusted parameters for edge detection and preprocessing
+canny_threshold1 = 20    # Further decrease to capture more edges
+canny_threshold2 = 80    # Further decrease to capture more edges
+blur_kernel_size = (5, 5)  # Valid Gaussian blur kernel
+
+def is_acceptable_shape(contour):
+    # Example: Check if contour is rectangular (with 4 vertices)
+    epsilon = 0.02 * cv2.arcLength(contour, True)
+    approx = cv2.approxPolyDP(contour, epsilon, True)
+    return len(approx) == 4
 
 def is_valid_photo(w, h, aspect_ratio):
     return w >= min_width and h >= min_height and aspect_ratio_range[0] <= aspect_ratio <= aspect_ratio_range[1]
+
+def is_image_good_quality(image, min_edge_strength=100):
+    edges = cv2.Canny(image, 100, 200)
+    edge_strength = np.sum(edges) / np.prod(edges.shape)
+    return edge_strength > min_edge_strength
+
+def expand_borders(x, y, w, h, border_margin, image_shape):
+    x = max(x - border_margin, 0)
+    y = max(y - border_margin, 0)
+    w = min(w + 2 * border_margin, image_shape[1] - x)
+    h = min(h + 2 * border_margin, image_shape[0] - y)
+    return x, y, w, h
 
 def extract_photos_from_file(image, filename):
     # Convert to grayscale
@@ -32,8 +51,12 @@ def extract_photos_from_file(image, filename):
     # Preprocess the image
     blurred = cv2.GaussianBlur(gray, blur_kernel_size, 0)
 
+    # Adaptive thresholding
+    thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY, 11, 2)
+
     # Use Canny edge detection
-    edges = cv2.Canny(blurred, canny_threshold1, canny_threshold2)
+    edges = cv2.Canny(thresh, canny_threshold1, canny_threshold2)
 
     # Apply morphological operations
     kernel = np.ones((5, 5), np.uint8)
@@ -41,8 +64,11 @@ def extract_photos_from_file(image, filename):
     eroded_edges = cv2.erode(dilated_edges, kernel, iterations=1)
 
     # Find contours (which correspond to the boundaries of each photo)
-    contours, hierarchy = cv2.findContours(eroded_edges, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = cv2.findContours(eroded_edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
+    # Filter contours based on hierarchy
+    contours = [contour for i, contour in enumerate(contours) if hierarchy[0][i][3] == -1]
+
     # Sort contours by area in descending order
     contours = sorted(contours, key=lambda c: cv2.contourArea(c), reverse=True)
 
@@ -52,9 +78,16 @@ def extract_photos_from_file(image, filename):
 
     # Loop over contours to extract and save each photo
     for i, contour in enumerate(contours):
-        if hierarchy[0][i][3] == -1:  # External contours only
-            x, y, w, h = cv2.boundingRect(contour)
+        if is_acceptable_shape(contour):
+            # Approximate contour to a polygon
+            epsilon = 0.02 * cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, epsilon, True)
+            
+            x, y, w, h = cv2.boundingRect(approx)
             aspect_ratio = w / h
+
+            # Adjust for photos close to the borders
+            x, y, w, h = expand_borders(x, y, w, h, border_margin, image.shape)
 
             if is_valid_photo(w, h, aspect_ratio):
                 # Check for overlap with previously saved photos
@@ -69,12 +102,13 @@ def extract_photos_from_file(image, filename):
                         break
                     
                     cropped_image = image[y:y+h, x:x+w]
+                    
+                    # Quality check
+                    if not is_image_good_quality(cropped_image):
+                        continue
+                    
                     output_filename = f'{os.path.splitext(filename)[0]}_{photo_count + 1:02d}.tif'
                     output_path = os.path.join(output_folder, output_filename)
-                    
-                    # Print the output path for debugging
-                    print(f"Saving extracted photo to: {output_path}")
-                    
                     success = cv2.imwrite(output_path, cropped_image)
                     
                     if success:
@@ -87,7 +121,7 @@ def extract_photos_from_file(image, filename):
 print("Starting extraction...")
 # Loop over all TIFF files in the input folder
 for filename in os.listdir(input_folder):
-    if filename.lower().endswith(('.tif', '.tiff')):
+    if filename.lower().endswith('.tif'):
         print(f"Processing {filename}...")
         
         # Construct full file path
