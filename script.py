@@ -95,16 +95,20 @@ def extract_photos_from_file(image, filename, pass_num, extracted_photos):
     return extracted_photos
 
 print("Starting extraction...")
-# Loop over all TIFF files in the input folder
+
+# Supported file extensions
+supported_extensions = ('.tif', '.tiff', '.jpg', '.jpeg', '.png')
+
+# Loop over all supported files in the input folder
 for filename in os.listdir(input_folder):
-    if filename.lower().endswith('.tif'):
+    if filename.lower().endswith(supported_extensions):
         print(f"Processing {filename}...")
         
         # Construct full file path
         input_path = os.path.join(input_folder, filename)
         print(f"Loading image from {input_path}...")
         
-        # Load the TIFF image
+        # Load the image
         image = cv2.imread(input_path)
         if image is None:
             print(f"Failed to load image {input_path}. It might be corrupted or not exist.")
