@@ -1,0 +1,64 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS metadata
+.DS_Store
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# Unit test cache
+.pytest_cache/
+.tox/
+.coverage
+coverage.xml
+htmlcov/
+
+# MyPy and Pyre type checkers
+.mypy_cache/
+.pyre/
+
+# pip and pipenv
+pip-log.txt
+pip-delete-this-directory.txt
+Pipfile.lock
+
+# Build directories
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE/editor folders
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Installer logs
+*.msi
+*.exe
+*.egg
+
+# Environments in project root
+*.env
+.env/
+.envrc
+.env.*
+
+# Temporary symlinks or files
+*.swp
+*~
