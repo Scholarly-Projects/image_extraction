@@ -59,7 +59,7 @@ __Windows__
 
 ```sh
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate
 ```
 
 ## 3. Install Required Python Libraries
