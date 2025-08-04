@@ -1,11 +1,11 @@
 ## activate venv
 
-Mac
+__Mac__
 
 python -m venv .venv
 source .venv/bin/activate
 
-Windows
+__Windows__
 
 python -m venv .venv
 .venv\Scripts\activate
@@ -14,8 +14,7 @@ python -m venv .venv
 
 pip install opencv-python numpy
 
-
-## Add A and B folder to repo
+## add A and B folder to repo
 
 Add images into A folder
 
