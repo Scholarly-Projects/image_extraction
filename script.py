@@ -14,9 +14,9 @@ min_area = 50000          # Minimum area for a photo (pixels)
 min_dim = 250             # Minimum width/height (pixels)
 max_aspect = 2.2          # Maximum width/height ratio
 min_aspect = 0.45         # New minimum to exclude vertical slices
-margin = 2                # Border margin (pixels)
+margin = 0                # Border margin (pixels)
 max_photos = 12           # Max photos per image
-output_quality = 99       # JPEG quality (1-100)
+output_quality = 100       # JPEG quality (1-100)
 
 def deskew_image(image, contour):
     """Straighten a rotated photo using perspective transform"""
