@@ -1,8 +1,11 @@
-import cv2
+from skimage import io, color, filters, measure, morphology, util
+from skimage.morphology import binary_closing, remove_small_objects
+from scipy.ndimage import binary_fill_holes
 import numpy as np
 import os
 from pathlib import Path
 import time
+from PIL import Image
 
 # Configuration
 input_folder = 'A'
@@ -10,105 +13,64 @@ output_folder = 'B'
 os.makedirs(output_folder, exist_ok=True)
 
 # Parameters
-min_area = 50000          # Minimum area for a photo (pixels)
-min_dim = 250             # Minimum width/height (pixels)
-max_aspect = 2.2          # Maximum width/height ratio
-min_aspect = 0.45         # New minimum to exclude vertical slices
-margin = 0                # Border margin (pixels)
-max_photos = 12           # Max photos per image
-output_quality = 100       # JPEG quality (1-100)
-
-def deskew_image(image, contour):
-    """Straighten a rotated photo using perspective transform"""
-    peri = cv2.arcLength(contour, True)
-    approx = cv2.approxPolyDP(contour, 0.02 * peri, True)
-    
-    if len(approx) != 4:
-        return None  # Can't deskew non-quadrilaterals
-    
-    # Order points consistently
-    points = approx.reshape(4, 2)
-    rect = np.zeros((4, 2), dtype="float32")
-    s = points.sum(axis=1)
-    rect[0] = points[np.argmin(s)]
-    rect[2] = points[np.argmax(s)]
-    
-    diff = np.diff(points, axis=1)
-    rect[1] = points[np.argmin(diff)]
-    rect[3] = points[np.argmax(diff)]
-    
-    # Calculate dimensions
-    (tl, tr, br, bl) = rect
-    width = max(int(np.linalg.norm(tr - tl)), int(np.linalg.norm(br - bl)))
-    height = max(int(np.linalg.norm(bl - tl)), int(np.linalg.norm(br - tr)))
-    
-    # Perspective transform
-    dst = np.array([
-        [0, 0],
-        [width - 1, 0],
-        [width - 1, height - 1],
-        [0, height - 1]
-    ], dtype="float32")
-    
-    M = cv2.getPerspectiveTransform(rect, dst)
-    return cv2.warpPerspective(image, M, (width, height))
+min_long_edge = 300
+max_long_edge = 1000
+margin = 0
+max_photos = 10
 
 def simple_extract(image_path, output_prefix):
-    """Simplified photo extraction with deskewing"""
-    img = cv2.imread(image_path)
-    if img is None:
-        print(f"  Error: Failed to load {image_path}")
-        return []
+    image = io.imread(image_path)
+    if image.ndim == 2:
+        image = color.gray2rgb(image)
+
+    gray = color.rgb2gray(image)
     
-    # Preprocessing
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blurred, 30, 100)
-    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=2)
+    # Thresholding works better than edge detection for historic photos
+    thresh = filters.threshold_otsu(gray)
+    binary = gray > thresh
+    
+    # Close small gaps and fill holes
+    closed = binary_closing(binary, footprint=morphology.rectangle(5, 5))
+    filled = binary_fill_holes(closed)
+    
+    # Remove small objects
+    cleaned = remove_small_objects(filled, min_size=(min_long_edge * min_long_edge)//4)
     
     # Find contours
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    label_image = measure.label(cleaned)
     photos = []
     
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area < min_area:
+    for region in measure.regionprops(label_image):
+        minr, minc, maxr, maxc = region.bbox
+        width, height = maxc - minc, maxr - minr
+        long_edge = max(width, height)
+        aspect_ratio = width / height
+        
+        # Filter by size and reasonable photo aspect ratios (0.5-2.0)
+        if (long_edge < min_long_edge or long_edge > max_long_edge or 
+            aspect_ratio < 0.5 or aspect_ratio > 2.0):
             continue
             
-        rect = cv2.minAreaRect(cnt)
-        (_, _), (w, h), _ = rect
-        
-        # Skip if too small or aspect ratio too extreme
-        if min(w, h) < min_dim or max(w/h, h/w) > max_aspect:
-            continue
-            
-        # Get bounding box with margin
-        box = cv2.boxPoints(rect)
-        box = np.intp(box)  # Modern replacement for np.int0
-        x, y, w, h = cv2.boundingRect(box)
-        
-        x = max(x - margin, 0)
-        y = max(y - margin, 0)
-        w = min(w + 2*margin, img.shape[1] - x)
-        h = min(h + 2*margin, img.shape[0] - y)
-        
-        # Deskew and save
-        deskewed = deskew_image(img, cnt)
-        if deskewed is None:  # Fallback to simple crop
-            deskewed = img[y:y+h, x:x+w]
-        
-        photos.append(deskewed)
-        
+        # Extract with margin
+        x = max(minc - margin, 0)
+        y = max(minr - margin, 0)
+        w = min(width + 2 * margin, image.shape[1] - x)
+        h = min(height + 2 * margin, image.shape[0] - y)
+
+        crop = image[y:y+h, x:x+w]
+        photos.append(util.img_as_ubyte(crop))
+
         if len(photos) >= max_photos:
             break
-    
+
     # Save extracted photos
     for i, photo in enumerate(photos):
-        cv2.imwrite(f"{output_prefix}_{i+1:03d}.jpg", photo, 
-                   [int(cv2.IMWRITE_JPEG_QUALITY), output_quality])
-    
+        im = Image.fromarray(photo)
+        im.save(f"{output_prefix}_{i+1:03d}.jpg", format='JPEG', quality=90)
+
     return len(photos)
 
+# === MAIN EXECUTION ===
 print(f"Processing images from {input_folder}...")
 start_time = time.time()
 total_photos = 0
@@ -116,17 +78,17 @@ total_photos = 0
 for filename in sorted(os.listdir(input_folder)):
     if not filename.lower().endswith(('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp')):
         continue
-        
+
     print(f"\nProcessing {filename}...")
     file_start = time.time()
-    
+
     base_name = Path(filename).stem
     input_path = os.path.join(input_folder, filename)
-    output_path = os.path.join(output_folder, base_name)
-    
-    found = simple_extract(input_path, output_path)
+    output_prefix = os.path.join(output_folder, base_name)
+
+    found = simple_extract(input_path, output_prefix)
     total_photos += found
-    
+
     print(f"  Extracted {found} photos in {time.time() - file_start:.2f}s")
 
 print(f"\nFinished. Total {total_photos} photos extracted in {time.time() - start_time:.2f} seconds")
